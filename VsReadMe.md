@@ -204,22 +204,7 @@
         1.  🤖 [AI_AGENT] Implement visualization logic.
         2.  👥 [COLLABORATIVE] Test and verify 3D visualization.
     *   **Deliverable:** Live 3D reconstruction alongside 2D video feed.
-
-## Initial Setup Tasks for User
-
-🧑 [USER] Before we begin implementation:
-1. Choose and install the depth estimation model (MiDaS/DPT)
-2. Choose and install the segmentation model (DeepLabV3/SegFormer)
-3. Install core dependencies:
-   - PyTorch
-   - OpenCV
-   - Open3D
-   - Required model-specific libraries
-4. Download necessary pre-trained weights
-5. Provide camera intrinsic parameters for your setup
-
-Once these are complete, we can begin implementing the AI_AGENT tasks in sequence.
-
+    
 ---
 
 **General Advice for the AI Curosr Agent Developer:**

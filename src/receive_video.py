@@ -9,6 +9,8 @@ from datetime import datetime
 
 import cv2
 import numpy as np
+from ultralytics import YOLO
+import math
 
 ###############################################################################
 # Constants
@@ -210,55 +212,83 @@ class VideoReceiver(threading.Thread):
 ###############################################################################
 # 3. Display loop (main thread) – show frames with OpenCV
 ###############################################################################
+def process_frame(frame_bytes):
+    """Process frame before display."""
+    try:
+        # Decode JPEG bytes to numpy array
+        arr = np.frombuffer(frame_bytes, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if frame is None:
+            return None
+            
+        # Ensure consistent frame size
+        target_size = (640, 480)  # Standard size for processing
+        frame = cv2.resize(frame, target_size)
+        return frame
+    except Exception as e:
+        print(f"Error processing frame: {e}")
+        return None
+
 def display_frames(frame_q: queue.Queue):
     cv2.namedWindow("Drone", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("Depth", cv2.WINDOW_NORMAL)  # Add depth window
+    
+    # Initialize depth estimator
+    from vision_system.depth_processor.depth_estimator import DepthEstimator
+    depth_estimator = DepthEstimator(max_queue_size=2)  # Small queue for real-time
+    depth_estimator.start()
 
-    # build a single placeholder image (black + red warning text)
-    placeholder_h, placeholder_w = 480, 640
-    placeholder = np.zeros((placeholder_h, placeholder_w, 3), np.uint8)
-    txt = "No JPEG frames reconstructed yet"
-    font, scale, th = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
-    (tw, th_), _ = cv2.getTextSize(txt, font, scale, th)
-    x = (placeholder_w - tw) // 2
-    y = (placeholder_h + th_) // 2
-    cv2.putText(placeholder, txt, (x, y), font, scale, (0, 0, 255), th)
-
-    fps_timer = time.time()
-    frame_count = 0
+    # Initialize YOLO model
+    model = YOLO('yolov8n.pt')
 
     while True:
-        jpeg = None
-        try:
-            jpeg = frame_q.get(timeout=1.0)
-        except queue.Empty:
-            pass
+        frame_bytes = frame_q.get()
+        if frame_bytes is None:
+            continue
+            
+        # Process frame
+        frame = process_frame(frame_bytes)
+        if frame is None:
+            continue
 
-        if jpeg is None:
-            img = placeholder
-            is_real = False
-        else:
-            arr = np.frombuffer(jpeg, dtype=np.uint8)
-            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-            if frame is None:
-                print(f"[display] ⚠ imdecode failed ({len(arr)} bytes)")
-                img, is_real = placeholder, False
-            else:
-                print(f"[display] decoded frame {frame.shape}")
-                img, is_real = frame, True
+        # Make a copy for depth estimation (original BGR)
+        depth_frame = frame.copy()
+        
+        # Convert to RGB for YOLO
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        cv2.imshow("Drone", img)
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord("q"):
+        # Run YOLO detection
+        results = model(rgb_frame, stream=True)
+        
+        # Process results and draw boxes
+        for r in results:
+            # Use the RGB frame for annotations
+            annotated_frame = r.plot()
+            # Convert back to BGR for display
+            annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR)
+            cv2.imshow("Drone", annotated_frame)
+            
+            # Process depth on original BGR frame
+            if depth_estimator.add_frame(depth_frame):
+                result = depth_estimator.get_latest_result()
+                if result is not None:
+                    depth_map, _ = result
+                    # Normalize and colorize depth map
+                    depth_vis = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX)
+                    depth_color = cv2.applyColorMap(depth_vis.astype(np.uint8), cv2.COLORMAP_INFERNO)
+                    
+                    # Add FPS text
+                    stats = depth_estimator.get_stats()
+                    cv2.putText(depth_color, f"Depth FPS: {stats['fps']:.1f}", (10, 30),
+                              cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                    
+                    # Show depth window
+                    cv2.imshow("Depth", depth_color)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-        # only count toward FPS when we had a real frame
-        if is_real:
-            frame_count += 1
-            if frame_count % 60 == 0:
-                now = time.time()
-                print(f"[display] ~{frame_count/(now-fps_timer):4.1f} fps")
-                fps_timer, frame_count = now, 0
-
+    depth_estimator.stop()
     cv2.destroyAllWindows()
 
 ###############################################################################

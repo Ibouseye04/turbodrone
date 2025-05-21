@@ -74,7 +74,8 @@ To follow along with development, download the [Hiturbo APK](https://play.google
 From there, explore the java files like `HyControlConsumer.java` and `UDPHeartbeat.java` to understand the implemenetation of the protocols.
 Additionally, Wireshark is your friend for understanding the raw data packets being sent and received. Watch this [video](https://x.com/marshallrichrds/status/1923165437698670818) for an overview into the reverse engineering process used.
 
+## Vision System Integration
 
+This project also includes a vision system module located in `src/vision_system/`. This system is designed to process video feeds from the drone for tasks such as depth estimation and object detection.
 
-
-
+For more details on the vision system's components, functionality, and how to use or test its modules, please refer to the [Vision System README](src/vision_system/README.md).
